@@ -1,17 +1,16 @@
 import asyncio
 import json
 import os
-import re
 import threading
 import time
 
 import amanobot
 import pytesseract
 import wolframalpha
+from amanobot.aio.delegate import create_open, pave_event_space, per_chat_id
+from amanobot.aio.loop import MessageLoop
 from amanobot.helper import SafeDict
 from pydub import AudioSegment
-from amanobot.aio.delegate import pave_event_space, per_chat_id, create_open
-from amanobot.aio.loop import MessageLoop
 from speech_recognition import AudioFile, Recognizer, UnknownValueError
 
 try:
@@ -57,7 +56,7 @@ async def yes_no(chat_id, its_yes):
 
 
 async def process_result(chat_id, txt):
-    result = client.query(txt)
+    result = client.query(input=txt, scantimeout=10.0)
     images = []
     if hasattr(result, 'results') and result.results is not None:
         cond = False
@@ -80,7 +79,7 @@ async def process_result(chat_id, txt):
     else:
         await bot.sendMessage(chat_id,
                               'No result found! Try writing something else, like an equation! You must '
-                              'write it in english, not in russian or indian..')
+                              'write it in english, without any emoji!')
 
 
 async def process_audio(chat_id, msg):
@@ -151,14 +150,6 @@ async def split_and_send(chat_id, text):
     return msg
 
 
-def demojify(text):
-    regex_pattern = re.compile(pattern="["
-                                       u"\U0001F600-\U0001F64F"  # emoticons
-                                       u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
-                                       "]+", flags=re.UNICODE)
-    return str(regex_pattern.sub(r'', text))
-
-
 def cleaner(f_stop):
     print(f'LOG: Cleaned {len(data)} items!')
     data.clear()
@@ -178,7 +169,7 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
     async def on_chat_message(self, msg):
         content_type, chat_type, chat_id = amanobot.glance(msg)
         if content_type == 'text':
-            txt = demojify(msg['text'])
+            txt = str(msg['text'])
             name = msg['from']['first_name']
             print("LOG: " + name + ": " + txt)
 
@@ -204,8 +195,9 @@ if __name__ == '__main__':
 
     bot = amanobot.aio.DelegatorBot(TOKEN, [
         pave_event_space()(
-            per_chat_id(), create_open, MessageHandler, timeout=60),
+            per_chat_id(), create_open, MessageHandler, timeout=20),
     ])
+    bot.getUpdates(offset=-1)
     loop = asyncio.get_event_loop()
     loop.create_task(MessageLoop(bot).run_forever())
     loop.run_forever()
