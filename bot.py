@@ -189,6 +189,9 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
             await process_image(chat_id, msg)
 
 
+async def start_bot():
+    await bot.getUpdates(offset=-1)
+
 if __name__ == '__main__':
     TOKEN, client_id = load_credentials()
     client = wolframalpha.Client(client_id)
@@ -197,7 +200,7 @@ if __name__ == '__main__':
         pave_event_space()(
             per_chat_id(), create_open, MessageHandler, timeout=20),
     ])
-    bot.getUpdates(offset=-1)
     loop = asyncio.get_event_loop()
+    loop.run_until_complete(start_bot())
     loop.create_task(MessageLoop(bot).run_forever())
     loop.run_forever()
