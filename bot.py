@@ -3,15 +3,18 @@ import json
 import os
 import threading
 import time
-
 import amanobot
 import pytesseract
 import wolframalpha
+import zipfile
+import tempfile
+import requests
 from amanobot.aio.delegate import create_open, pave_event_space, per_chat_id
 from amanobot.aio.loop import MessageLoop
 from amanobot.helper import SafeDict
 from pydub import AudioSegment
 from speech_recognition import AudioFile, Recognizer, UnknownValueError
+from pprint import pprint
 
 try:
     from PIL import Image
@@ -23,8 +26,8 @@ MAX_MESSAGE_LENGTH = 4096
 
 
 async def start(chat_id, name):
-    welcome = f'Welcome to wolframalphaquerybot 2.2 by @evilscript, {name}, send me a query or a voice audio, like ' \
-              f'1GHz to Hz or log(25)!\nUPDATE 2.2: You can send me an image and receive the text inside it!'
+    welcome = f'Welcome to wolframalphaquerybot 2.3 by @evilscript, {name}, send me a query or a voice audio, like ' \
+              f'1GHz to Hz or log(25)!'
     await bot.sendMessage(chat_id, welcome)
     await bot.sendMessage(chat_id,
                           'You can ask me everything you have in mind, but if you need some help: '
@@ -38,17 +41,36 @@ async def help_me(chat_id):
                                    'with your query!')
 
 
+def compress_file(file_urls):
+    """Download all the files from file_urls list of URLs into a temporary directory
+    then compress them into a single .zip file and return the path to the zip file"""
+    # Download the files
+    files = []
+    for url in file_urls:
+        # Download the file and save it to a temporary file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".gif")
+        temp_file.write(requests.get(url).content)
+        temp_file.close()
+        files.append(temp_file.name)
+    # Create a temporary zip file to store the files
+    zip_file = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+    # Write the files to the temporary zip file
+    with zipfile.ZipFile(zip_file, "w") as zf:
+        for file in files:
+            zf.write(f"{file}", f"{file}")
+    # Return file path
+    return zip_file.name
+
+
 async def yes_no(chat_id, its_yes):
+    files = []
     if chat_id in data:
         item = data.pop(chat_id)
         if its_yes and item is not None:
             for i in item:
-                try:
-                    await bot.sendPhoto(chat_id, i.get('@src'))
-                except amanobot.exception.TelegramError:
-                    # There is a gif instead of an image
-                    await bot.sendVideo(chat_id, i.get('@src'))
-                    pass
+                files.append(i.get('@src'))
+            with open(compress_file(files), 'rb') as f:
+                await bot.sendDocument(chat_id, f)
         else:
             await bot.sendMessage(chat_id, 'No previous message, try to say something!')
     else:
@@ -58,24 +80,23 @@ async def yes_no(chat_id, its_yes):
 async def process_result(chat_id, txt):
     result = client.query(input=txt, scantimeout=10.0)
     images = []
+    text_result = []
     if hasattr(result, 'results') and result.results is not None:
         cond = False
         for p in result.pods:
             if cond:
                 for subpod in p.subpods:
-                    for sub in subpod.img:
-                        images.append(sub)
-                        if hasattr(sub, '@alt'):
-                            try:
-                                await bot.sendMessage(chat_id, p['@title'] + ": " + sub['@alt'])
-                            except amanobot.exception.TelegramError:
-                                # String is way too big to send
-                                await split_and_send(chat_id, p['@title'] + ": " + sub['@alt'])
+                    images.append(subpod.img)
+                    if subpod.plaintext is not None:
+                        text_result.append(subpod.plaintext)
             else:
                 cond = True
-
-        data[chat_id] = images
-        await bot.sendMessage(chat_id, 'Would you like to see it in images? write /yes or /no commands.')
+        if len(text_result) > 0:
+            await split_and_send(chat_id, "\n---\n".join(text_result))
+            data[chat_id] = images
+            await bot.sendMessage(chat_id, 'Would you like to see it in images? write /yes or /no commands.')
+        else:
+            await bot.sendMessage(chat_id, 'No result found!')
     else:
         await bot.sendMessage(chat_id,
                               'No result found! Try writing something else, like an equation! You must '
@@ -128,26 +149,21 @@ def load_credentials():
 
 
 async def split_and_send(chat_id, text):
+    """
+    Given a text, split it in pieces adjusted to the telegram
+    maximum length and send them to the user
+    """
     parts = []
-    while len(text) > 0:
-        if len(text) > MAX_MESSAGE_LENGTH:
-            part = text[:MAX_MESSAGE_LENGTH]
-            first_lnbr = part.rfind('\n')
-            if first_lnbr != -1:
-                parts.append(part[:first_lnbr])
-                text = text[first_lnbr:]
-            else:
-                parts.append(part)
-                text = text[MAX_MESSAGE_LENGTH:]
-        else:
-            parts.append(text)
-            break
 
-    msg = None
+    while len(text) > MAX_MESSAGE_LENGTH:
+        parts.append(text[:MAX_MESSAGE_LENGTH])
+        text = text[MAX_MESSAGE_LENGTH:]
+    parts.append(text)
+
     for part in parts:
         await bot.sendMessage(chat_id, part)
         time.sleep(0.5)
-    return msg
+    return text
 
 
 def cleaner(f_stop):
@@ -189,8 +205,8 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
             await process_image(chat_id, msg)
 
 
-async def start_bot():
-    await bot.getUpdates(offset=-1)
+async def start_bot(this_bot):
+    await this_bot.getUpdates(offset=-1)
 
 if __name__ == '__main__':
     TOKEN, client_id = load_credentials()
@@ -201,6 +217,6 @@ if __name__ == '__main__':
             per_chat_id(), create_open, MessageHandler, timeout=20),
     ])
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(start_bot())
+    loop.run_until_complete(start_bot(bot))
     loop.create_task(MessageLoop(bot).run_forever())
     loop.run_forever()

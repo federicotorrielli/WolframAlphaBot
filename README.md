@@ -14,3 +14,7 @@ This will install all the necessary modules for WolframAlphaBot to run
 This bot was tested with Python 3.6+ and PyPy3, PyPy3 will NOT work on Windows systems, because Windows
 is really a bad operating system, sorry, Microsoft (And you can't even install it on WSL, losers!).
 The bot will have optimal performance with PyPy3.
+
+## Try it!
+
+Search for *@wolframbetabot* on Telegram to try a live version!

@@ -1,6 +1,7 @@
-wolframalpha~=4.0.0
-pydub~=0.24.1
+wolframalpha==5.0.0
+pydub==0.25.1
 SpeechRecognition==3.8.1
-pytesseract~=0.3.6
-Pillow>=8.3.2
-amanobot>=1.8.1
+pytesseract==0.3.8
+Pillow==8.4.0
+amanobot==2.1.0
+requests==2.26.0
