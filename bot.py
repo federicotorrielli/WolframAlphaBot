@@ -1,40 +1,41 @@
 import asyncio
 import json
 import os
+import tempfile
 import threading
 import time
+import zipfile
+
 import amanobot
 import pytesseract
-import wolframalpha
-import zipfile
-import tempfile
 import requests
+import wolframalpha
 from amanobot.aio.delegate import create_open, pave_event_space, per_chat_id
 from amanobot.aio.loop import MessageLoop
 from amanobot.helper import SafeDict
+from PIL import Image
 from pydub import AudioSegment
 from speech_recognition import AudioFile, Recognizer, UnknownValueError
-from pprint import pprint
 
-try:
-    from PIL import Image
-except ImportError:
-    import Image
-
-data = SafeDict()
-MAX_MESSAGE_LENGTH = 4096
+data = SafeDict()  # Data structure to store the messages, we use it to respond to the user when a /yes or /no command is received
+MAX_MESSAGE_LENGTH = 4096 # Max message length is 4096, so we split the message in chunks of 4096
 
 
 async def start(chat_id, name):
-    welcome = f'Welcome to wolframalphaquerybot 2.3 by @evilscript, {name}, send me a query or a voice audio, like ' \
-              f'1GHz to Hz or log(25)!'
+    """
+    Sends a welcome message to the user
+    """
+    welcome = f'Welcome to WolframAlpha Bot by @evilscript, {name}, send me a query or a voice audio, like ' \
+              f'1GHz to Hz or log(25)!\n---\n'\
+              f'You can ask me everything you have in mind, but if you need some help: '\
+              f'https://www.wolframalpha.com/examples/'
     await bot.sendMessage(chat_id, welcome)
-    await bot.sendMessage(chat_id,
-                          'You can ask me everything you have in mind, but if you need some help: '
-                          'https://www.wolframalpha.com/examples/')
 
 
 async def help_me(chat_id):
+    """
+    Sends a help message to the user
+    """
     await bot.sendMessage(chat_id, 'If you are here, you probably don\'t understand what\'s this bot is about.\nYou '
                                    'don\'t have to write commands to make it work, just write plain in the chat a '
                                    'query like 256*log(25) and receive the result, or do a voice audio in english '
@@ -42,8 +43,10 @@ async def help_me(chat_id):
 
 
 def compress_file(file_urls):
-    """Download all the files from file_urls list of URLs into a temporary directory
-    then compress them into a single .zip file and return the path to the zip file"""
+    """
+    Download all the files from file_urls list of URLs into a temporary directory
+    then compress them into a single .zip file and return the path to the zip file
+    """
     # Download the files
     files = []
     for url in file_urls:
@@ -63,6 +66,10 @@ def compress_file(file_urls):
 
 
 async def yes_no(chat_id, its_yes):
+    """
+    Process the /yes or /no command.
+    If yes, send the images to the user, if no, delete the data structure
+    """
     files = []
     if chat_id in data:
         item = data.pop(chat_id)
@@ -78,6 +85,9 @@ async def yes_no(chat_id, its_yes):
 
 
 async def process_result(chat_id, txt):
+    """
+    Process the result of the query
+    """
     result = client.query(input=txt, scantimeout=10.0)
     images = []
     text_result = []
@@ -104,6 +114,9 @@ async def process_result(chat_id, txt):
 
 
 async def process_audio(chat_id, msg):
+    """
+    Send wolframalpha the text in the audio and get the result
+    """
     await bot.download_file(msg['voice']['file_id'], "./dest.ogg")
     filename = "dest.ogg"
     dest = "dest.flac"
@@ -129,6 +142,9 @@ async def process_audio(chat_id, msg):
 
 
 async def process_image(chat_id, msg):
+    """
+    Send the user the text contained in the image
+    """
     await bot.download_file(msg['photo'][len(msg['photo']) - 1]['file_id'], "./dest.jpg")
     await bot.sendMessage(chat_id,
                           f"Result: {pytesseract.image_to_string(Image.open('./dest.jpg'), lang='eng+it+deu')}")
@@ -167,8 +183,12 @@ async def split_and_send(chat_id, text):
 
 
 def cleaner(f_stop):
-    print(f'LOG: Cleaned {len(data)} items!')
-    data.clear()
+    """
+    Clear the data from the data dictionary
+    """
+    if len(data) > 0:
+        print(f'LOG: Cleaned {len(data)} items!')
+        data.clear()
     if not f_stop.is_set():
         threading.Timer(5000, cleaner, [f_stop]).start()
 
