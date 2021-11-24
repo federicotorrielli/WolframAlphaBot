@@ -5,6 +5,7 @@ import tempfile
 import threading
 import time
 import zipfile
+from uuid import uuid4
 
 import amanobot
 import pytesseract
@@ -17,8 +18,10 @@ from PIL import Image
 from pydub import AudioSegment
 from speech_recognition import AudioFile, Recognizer, UnknownValueError
 
-data = SafeDict()  # Data structure to store the messages, we use it to respond to the user when a /yes or /no command is received
-MAX_MESSAGE_LENGTH = 4096 # Max message length is 4096, so we split the message in chunks of 4096
+# Data structure to store the messages, we use it to respond to the user when a /yes or /no
+data = SafeDict()
+# Max message length is 4096, so we split the message in chunks of 4096
+MAX_MESSAGE_LENGTH = 4096
 
 
 async def start(chat_id, name):
@@ -26,8 +29,8 @@ async def start(chat_id, name):
     Sends a welcome message to the user
     """
     welcome = f'Welcome to WolframAlpha Bot by @evilscript, {name}, send me a query or a voice audio, like ' \
-              f'1GHz to Hz or log(25)!\n---\n'\
-              f'You can ask me everything you have in mind, but if you need some help: '\
+              f'1GHz to Hz or log(25)!\n---\n' \
+              f'You can ask me everything you have in mind, but if you need some help: ' \
               f'https://www.wolframalpha.com/examples/'
     await bot.sendMessage(chat_id, welcome)
 
@@ -151,6 +154,12 @@ async def process_image(chat_id, msg):
     print(f"IMAGE LOG: {msg['from']['first_name']}")
 
 
+async def process_sticker(chat_id, msg):
+    username = msg['from']['first_name']
+    await bot.sendMessage(chat_id, f"I cannot process stickers right now, {username}!")
+    print(f"STICKER LOG: {username}")
+
+
 def load_credentials():
     """
     Loads credentials from a credentials.json file
@@ -182,6 +191,18 @@ async def split_and_send(chat_id, text):
     return text
 
 
+async def processing_message(chat_id, open_close, uuid):
+    """
+    Sends a "Processing..." message to the user while is waiting if
+    open_close is True, deletes the "Processing..." message if it is False.
+    The first message sent is stored in data[chat_id].
+    """
+    if open_close:
+        data[uuid] = await bot.sendMessage(chat_id, "Processing...")
+    else:
+        await bot.deleteMessage((data[uuid]['chat']['id'], data[uuid]['message_id']))
+
+
 def cleaner(f_stop):
     """
     Clear the data from the data dictionary
@@ -204,6 +225,8 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
 
     async def on_chat_message(self, msg):
         content_type, chat_type, chat_id = amanobot.glance(msg)
+        uuid = str(uuid4())
+        await processing_message(chat_id, True, uuid)
         if content_type == 'text':
             txt = str(msg['text'])
             name = msg['from']['first_name']
@@ -223,10 +246,14 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
             await process_audio(chat_id, msg)
         elif content_type == 'photo':
             await process_image(chat_id, msg)
+        elif content_type == 'sticker':
+            await process_sticker(chat_id, msg)
+        await processing_message(chat_id, False, uuid)
 
 
 async def start_bot(this_bot):
     await this_bot.getUpdates(offset=-1)
+
 
 if __name__ == '__main__':
     TOKEN, client_id = load_credentials()
@@ -234,7 +261,7 @@ if __name__ == '__main__':
 
     bot = amanobot.aio.DelegatorBot(TOKEN, [
         pave_event_space()(
-            per_chat_id(), create_open, MessageHandler, timeout=20),
+            per_chat_id(), create_open, MessageHandler, timeout=240),
     ])
     loop = asyncio.get_event_loop()
     loop.run_until_complete(start_bot(bot))
