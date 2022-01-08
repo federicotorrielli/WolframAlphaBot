@@ -18,7 +18,7 @@ from PIL import Image
 from pydub import AudioSegment
 from speech_recognition import AudioFile, Recognizer, UnknownValueError
 
-# Data structure to store the messages, we use it to respond to the user when a /yes or /no
+# Data structure to store the messages, we use it to respond to the user when a /yes is sent
 data = SafeDict()
 # Max message length is 4096, so we split the message in chunks of 4096
 MAX_MESSAGE_LENGTH = 4096
@@ -28,10 +28,12 @@ async def start(chat_id, name):
     """
     Sends a welcome message to the user
     """
-    welcome = f'Welcome to WolframAlpha Bot by @evilscript, {name}, send me a query or a voice audio, like ' \
-              f'1GHz to Hz or log(25)!\n---\n' \
-              f'You can ask me everything you have in mind, but if you need some help: ' \
-              f'https://www.wolframalpha.com/examples/'
+    welcome = (
+        f"Welcome to WolframAlpha Bot by @evilscript, {name}, send me a query or a voice audio, like "
+        f"1GHz to Hz or log(25)!\n---\n"
+        f"You can ask me everything you have in mind, but if you need some help: "
+        f"https://www.wolframalpha.com/examples/"
+    )
     await bot.sendMessage(chat_id, welcome)
 
 
@@ -39,10 +41,13 @@ async def help_me(chat_id):
     """
     Sends a help message to the user
     """
-    await bot.sendMessage(chat_id, 'If you are here, you probably don\'t understand what\'s this bot is about.\nYou '
-                                   'don\'t have to write commands to make it work, just write plain in the chat a '
-                                   'query like 256*log(25) and receive the result, or do a voice audio in english '
-                                   'with your query!')
+    await bot.sendMessage(
+        chat_id,
+        "If you are here, you probably don't understand what's this bot is about.\nYou "
+        "don't have to write commands to make it work, just write plain in the chat a "
+        "query like 256*log(25) and receive the result, or do a voice audio in english "
+        "with your query!",
+    )
 
 
 def compress_file(file_urls):
@@ -68,23 +73,21 @@ def compress_file(file_urls):
     return zip_file.name
 
 
-async def yes_no(chat_id, its_yes):
+async def yes(chat_id):
     """
-    Process the /yes or /no command.
-    If yes, send the images to the user, if no, delete the data structure
+    Process the /yes.
+    If yes, send the images to the user
     """
     files = []
     if chat_id in data:
         item = data.pop(chat_id)
-        if its_yes and item is not None:
+        if item is not None:
             for i in item:
-                files.append(i.get('@src'))
-            with open(compress_file(files), 'rb') as f:
+                files.append(i.get("@src"))
+            with open(compress_file(files), "rb") as f:
                 await bot.sendDocument(chat_id, f)
-        else:
-            await bot.sendMessage(chat_id, 'No previous message, try to say something!')
     else:
-        await bot.sendMessage(chat_id, 'No previous message, try to say something!')
+        await bot.sendMessage(chat_id, "No previous message, try to say something!")
 
 
 async def process_result(chat_id, txt):
@@ -94,7 +97,7 @@ async def process_result(chat_id, txt):
     result = client.query(input=txt, scantimeout=10.0)
     images = []
     text_result = []
-    if hasattr(result, 'results') and result.results is not None:
+    if hasattr(result, "results") and result.results is not None:
         cond = False
         for p in result.pods:
             if cond:
@@ -107,20 +110,24 @@ async def process_result(chat_id, txt):
         if len(text_result) > 0:
             await split_and_send(chat_id, "\n---\n".join(text_result))
             data[chat_id] = images
-            await bot.sendMessage(chat_id, 'Would you like to see it in images? write /yes or /no commands.')
+            await bot.sendMessage(
+                chat_id, "Would you like to see it in images? write /yes"
+            )
         else:
-            await bot.sendMessage(chat_id, 'No result found!')
+            await bot.sendMessage(chat_id, "No result found!")
     else:
-        await bot.sendMessage(chat_id,
-                              'No result found! Try writing something else, like an equation! You must '
-                              'write it in english, without any emoji!')
+        await bot.sendMessage(
+            chat_id,
+            "No result found! Try writing something else, like an equation! You must "
+            "write it in english, without any emoji!",
+        )
 
 
 async def process_audio(chat_id, msg):
     """
     Send wolframalpha the text in the audio and get the result
     """
-    await bot.download_file(msg['voice']['file_id'], "./dest.ogg")
+    await bot.download_file(msg["voice"]["file_id"], "./dest.ogg")
     filename = "dest.ogg"
     dest = "dest.flac"
     r = Recognizer()
@@ -136,7 +143,9 @@ async def process_audio(chat_id, msg):
             print(f"VOICE LOG - {msg['from']['first_name']}: {text}")
             await process_result(chat_id, text)
         except UnknownValueError:
-            await bot.sendMessage(chat_id, 'This audio is too short or corrupted, retry!')
+            await bot.sendMessage(
+                chat_id, "This audio is too short or corrupted, retry!"
+            )
             pass
     try:
         os.unlink(dest)
@@ -148,14 +157,18 @@ async def process_image(chat_id, msg):
     """
     Send the user the text contained in the image
     """
-    await bot.download_file(msg['photo'][len(msg['photo']) - 1]['file_id'], "./dest.jpg")
-    await bot.sendMessage(chat_id,
-                          f"Result: {pytesseract.image_to_string(Image.open('./dest.jpg'), lang='eng+it+deu')}")
+    await bot.download_file(
+        msg["photo"][len(msg["photo"]) - 1]["file_id"], "./dest.jpg"
+    )
+    await bot.sendMessage(
+        chat_id,
+        f"Result: {pytesseract.image_to_string(Image.open('./dest.jpg'), lang='eng+it+deu')}",
+    )
     print(f"IMAGE LOG: {msg['from']['first_name']}")
 
 
 async def process_sticker(chat_id, msg):
-    username = msg['from']['first_name']
+    username = msg["from"]["first_name"]
     await bot.sendMessage(chat_id, f"I cannot process stickers right now, {username}!")
     print(f"STICKER LOG: {username}")
 
@@ -168,7 +181,7 @@ def load_credentials():
     and WolframAlpha API Token
     :return: two strings, one token and one client_id
     """
-    with open('credentials.json') as credentials:
+    with open("credentials.json") as credentials:
         cred = json.load(credentials)
         return cred["TOKEN"], cred["Client"]
 
@@ -200,7 +213,7 @@ async def processing_message(chat_id, open_close, uuid):
     if open_close:
         data[uuid] = await bot.sendMessage(chat_id, "Processing...")
     else:
-        await bot.deleteMessage((data[uuid]['chat']['id'], data[uuid]['message_id']))
+        await bot.deleteMessage((data[uuid]["chat"]["id"], data[uuid]["message_id"]))
 
 
 def cleaner(f_stop):
@@ -208,7 +221,7 @@ def cleaner(f_stop):
     Clear the data from the data dictionary
     """
     if len(data) > 0:
-        print(f'LOG: Cleaned {len(data)} items!')
+        print(f"LOG: Cleaned {len(data)} items!")
         data.clear()
     if not f_stop.is_set():
         threading.Timer(5000, cleaner, [f_stop]).start()
@@ -227,26 +240,24 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
         content_type, chat_type, chat_id = amanobot.glance(msg)
         uuid = str(uuid4())
         await processing_message(chat_id, True, uuid)
-        if content_type == 'text':
-            txt = str(msg['text'])
-            name = msg['from']['first_name']
+        if content_type == "text":
+            txt = str(msg["text"])
+            name = msg["from"]["first_name"]
             print("LOG: " + name + ": " + txt)
 
-            if txt == '/start':
+            if txt == "/start":
                 await start(chat_id, name)
-            elif txt == '/help':
+            elif txt == "/help":
                 await help_me(chat_id)
-            elif txt == '/yes':
-                await yes_no(chat_id, True)
-            elif txt == '/no':
-                await yes_no(chat_id, False)
+            elif txt == "/yes":
+                await yes(chat_id, True)
             else:
                 await process_result(chat_id, txt)
-        elif content_type == 'voice':
+        elif content_type == "voice":
             await process_audio(chat_id, msg)
-        elif content_type == 'photo':
+        elif content_type == "photo":
             await process_image(chat_id, msg)
-        elif content_type == 'sticker':
+        elif content_type == "sticker":
             await process_sticker(chat_id, msg)
         await processing_message(chat_id, False, uuid)
 
@@ -255,14 +266,16 @@ async def start_bot(this_bot):
     await this_bot.getUpdates(offset=-1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     TOKEN, client_id = load_credentials()
     client = wolframalpha.Client(client_id)
 
-    bot = amanobot.aio.DelegatorBot(TOKEN, [
-        pave_event_space()(
-            per_chat_id(), create_open, MessageHandler, timeout=240),
-    ])
+    bot = amanobot.aio.DelegatorBot(
+        TOKEN,
+        [
+            pave_event_space()(per_chat_id(), create_open, MessageHandler, timeout=240),
+        ],
+    )
     loop = asyncio.get_event_loop()
     loop.run_until_complete(start_bot(bot))
     loop.create_task(MessageLoop(bot).run_forever())
