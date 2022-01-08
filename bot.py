@@ -73,7 +73,7 @@ def compress_file(file_urls):
     return zip_file.name
 
 
-async def yes(chat_id):
+async def process_yes(chat_id):
     """
     Process the /yes.
     If yes, send the images to the user
@@ -250,7 +250,7 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
             elif txt == "/help":
                 await help_me(chat_id)
             elif txt == "/yes":
-                await yes(chat_id, True)
+                await process_yes(chat_id)
             else:
                 await process_result(chat_id, txt)
         elif content_type == "voice":
