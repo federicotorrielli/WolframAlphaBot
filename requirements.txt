@@ -4,4 +4,4 @@ SpeechRecognition==3.8.1
 pytesseract==0.3.8
 Pillow==9.0.0
 amanobot==2.1.0
-requests==2.26.0
+requests==2.27.1
