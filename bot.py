@@ -8,13 +8,12 @@ import zipfile
 from uuid import uuid4
 
 import amanobot
-import pytesseract
+import contextlib
 import requests
 import wolframalpha
 from amanobot.aio.delegate import create_open, pave_event_space, per_chat_id
 from amanobot.aio.loop import MessageLoop
 from amanobot.helper import SafeDict
-from PIL import Image
 from pydub import AudioSegment
 from speech_recognition import AudioFile, Recognizer, UnknownValueError
 
@@ -78,12 +77,10 @@ async def process_yes(chat_id):
     Process the /yes.
     If yes, send the images to the user
     """
-    files = []
     if chat_id in data:
         item = data.pop(chat_id)
         if item is not None:
-            for i in item:
-                files.append(i.get("@src"))
+            files = [i.get("@src") for i in item]
             with open(compress_file(files), "rb") as f:
                 await bot.sendDocument(chat_id, f)
     else:
@@ -95,10 +92,10 @@ async def process_result(chat_id, txt):
     Process the result of the query
     """
     result = client.query(input=txt, scantimeout=10.0)
-    images = []
-    text_result = []
     if hasattr(result, "results") and result.results is not None:
         cond = False
+        images = []
+        text_result = []
         for p in result.pods:
             if cond:
                 for subpod in p.subpods:
@@ -107,7 +104,7 @@ async def process_result(chat_id, txt):
                         text_result.append(subpod.plaintext)
             else:
                 cond = True
-        if len(text_result) > 0:
+        if text_result:
             await split_and_send(chat_id, "\n---\n".join(text_result))
             data[chat_id] = images
             await bot.sendMessage(
@@ -146,31 +143,23 @@ async def process_audio(chat_id, msg):
             await bot.sendMessage(
                 chat_id, "This audio is too short or corrupted, retry!"
             )
-            pass
-    try:
+    with contextlib.suppress(PermissionError):
         os.unlink(dest)
-    except PermissionError:
-        pass
-
-
-async def process_image(chat_id, msg):
-    """
-    Send the user the text contained in the image
-    """
-    await bot.download_file(
-        msg["photo"][len(msg["photo"]) - 1]["file_id"], "./dest.jpg"
-    )
-    await bot.sendMessage(
-        chat_id,
-        f"Result: {pytesseract.image_to_string(Image.open('./dest.jpg'), lang='eng+it+deu')}",
-    )
-    print(f"IMAGE LOG: {msg['from']['first_name']}")
 
 
 async def process_sticker(chat_id, msg):
     username = msg["from"]["first_name"]
     await bot.sendMessage(chat_id, f"I cannot process stickers right now, {username}!")
     print(f"STICKER LOG: {username}")
+
+
+async def process_ping(chat_id):
+    response = requests.get('https://api.wolframalpha.com')
+    if response.status_code == 200:
+        await bot.sendMessage(chat_id, "PONG! WolframAlpha is online!")
+    else:
+        await bot.sendMessage(chat_id, "PONG! WolframAlpha is offline!")
+    print(f"PING LOG: {response.status_code}")
 
 
 def load_credentials():
@@ -224,7 +213,7 @@ def cleaner(f_stop):
         print(f"LOG: Cleaned {len(data)} items!")
         data.clear()
     if not f_stop.is_set():
-        threading.Timer(5000, cleaner, [f_stop]).start()
+        threading.Timer(20000, cleaner, [f_stop]).start()
 
 
 stop = threading.Event()
@@ -243,20 +232,20 @@ class MessageHandler(amanobot.aio.helper.ChatHandler):
         if content_type == "text":
             txt = str(msg["text"])
             name = msg["from"]["first_name"]
-            print("LOG: " + name + ": " + txt)
+            print(f"LOG: {name}: {txt}")
 
-            if txt == "/start":
-                await start(chat_id, name)
-            elif txt == "/help":
+            if txt == "/help":
                 await help_me(chat_id)
+            elif txt == "/ping":
+                await process_ping(chat_id)
+            elif txt == "/start":
+                await start(chat_id, name)
             elif txt == "/yes":
                 await process_yes(chat_id)
             else:
                 await process_result(chat_id, txt)
         elif content_type == "voice":
             await process_audio(chat_id, msg)
-        elif content_type == "photo":
-            await process_image(chat_id, msg)
         elif content_type == "sticker":
             await process_sticker(chat_id, msg)
         await processing_message(chat_id, False, uuid)
@@ -273,7 +262,7 @@ if __name__ == "__main__":
     bot = amanobot.aio.DelegatorBot(
         TOKEN,
         [
-            pave_event_space()(per_chat_id(), create_open, MessageHandler, timeout=240),
+            pave_event_space()(per_chat_id(), create_open, MessageHandler, timeout=300),
         ],
     )
     loop = asyncio.get_event_loop()
